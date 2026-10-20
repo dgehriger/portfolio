@@ -31,7 +31,7 @@ becomes a later thin adapter over the same service layer. The individual decisio
   (token in memory only, dies with the application), *always allow* (persisted), or *decline*.
   The token is delivered in the first `approved` poll and the request record deleted — one-shot,
   never re-displayable. At most one request is pending at a time, a decline starts a cool-down
-  (both 429 + `Retry-After`), and every 401 carries the pairing endpoint as a `pairing_endpoint`
+  (both 429 + `Retry-After`), and every 401 carries the pairing endpoint as a `pairingEndpoint`
   extension member, making the flow self-serve discoverable. Persistent clients are stored as
   SHA-256 token hashes in an owner-only JSON file in the plugin state location; the preference
   page lists clients (name, created, last used), revokes them individually with immediate effect,
@@ -42,15 +42,9 @@ becomes a later thin adapter over the same service layer. The individual decisio
   also be a literal loopback authority (403 `forbidden-host`). No OS-level verification of the
   requesting process is attempted: the threat model is same-user local processes, which could
   already read files or key-log; the prompt therefore frames the name as *self-declared*.
-- **Writes are in-memory until an explicit save.** API mutations behave exactly like UI edits:
-  mutate the `Client`, mark it dirty, let the UI refresh live. Nothing is persisted implicitly; an
-  agent's changes can be reviewed and discarded by closing without saving. `POST
-  /v1/files/{file}/save` persists the file through the UI's own save path (`OpenFile#save` →
-  `ClientInput#saveWithoutUI`: same path, same format, backup copy if enabled, no "save as"). It is a
-  write like any other, so it is rejected (423) while a modal dialog is open, and it first waits
-  (`?waitForUpdates`, default 30 s) for running background price updates so that it does not persist
-  a half-updated file. `POST /v1/files/open` opens a file in the application, but only a path the
-  user has already enabled for API access; the API cannot enable a path itself.
+- **Writes are in-memory only; there is no save endpoint.** API mutations behave exactly like UI
+  edits: mutate the `Client`, mark it dirty, let the UI refresh live. Only the user saves. An agent's
+  changes can be reviewed and discarded by closing without saving.
 - **Reads and writes that directly inspect or mutate model entities are marshalled to the UI thread**
   (`Display.syncExec`): one mutator thread, the same guarantee UI code relies on, rather than
   retrofitting locking onto the model. Calculation endpoints are the deliberate exception: they
@@ -63,19 +57,9 @@ becomes a later thin adapter over the same service layer. The individual decisio
   dialogs such as `EditSecurityDialog` hold a stale copy of the entity that is written back wholesale
   on OK, and `syncExec` runnables *do* execute during a modal event loop — so an API write landing
   mid-dialog would be silently clobbered. Reads stay allowed.
-- **PATCH is JSON Merge Patch (RFC 7386)** against a strict writable-field whitelist; unknown or
-  read-only fields are rejected with 422 rather than ignored, and all violations are reported at once
-  so an agent self-corrects in one round-trip.
-- **DELETE of an instrument is blocked (409) when transactions or investment plans reference it**,
-  because `Client.removeSecurity` cascades into transaction history the API client may never have
-  seen. Watchlist and taxonomy membership do not block; those references are cleaned up.
-- **The API vocabulary is deliberately more general than the model:** `Security` → *instrument*,
-  `Account` → *cash account*, `Portfolio` → *investment account*. An investment account may be a bank
-  Depot, a broker account or a crypto exchange account, so "securities account" — the term the English
-  UI uses — would bake bank vocabulary into a contract we cannot rename without breaking clients. The
-  pairing mirrors the industry split (Plaid: `depository` vs `investment`). Java class names keep the
-  model's vocabulary; only the wire format and user-facing strings use the API vocabulary.
-- **Errors are RFC 9457 problem+json** with field-level `errors: [{field, code, message}]`.
+- **The API vocabulary is deliberately more general than the model** (`Security` → *instrument*,
+  `Portfolio` → *investment account*), because the contract cannot be renamed once clients exist.
+  Java class names keep the model's vocabulary; the mapping and its rationale are in the README.
 
 **Considered Options**
 
@@ -98,6 +82,7 @@ becomes a later thin adapter over the same service layer. The individual decisio
   the whole point of the narrow write surface is that no request may introduce inconsistent data.
 - *MCP as the transport*: deferred, not rejected. Scripts want plain HTTP, and the service layer seam
   lets MCP plug in later without a second model-access path.
+- *A save endpoint*: deferred as too dangerous for v1. May follow.
 - *A single global token, copied by hand from the preferences* (the original decision): superseded.
   All-or-nothing revocation and no possibility of session-scoped grants; the manual copy step was
   also the worst part of the agent onboarding. Replaced by pairing before first release, so no
@@ -117,8 +102,9 @@ resolution, the modal write gate, UI-thread marshalling for entity reads/writes,
 mapping all live in the filter chain and cannot be forgotten per endpoint. Calculation endpoints use
 the same file-scope resolution but intentionally run their expensive read-only work off the UI thread.
 The wire conventions that would force a `/v2` if changed later — money shape, date format, list
-responses as an `{items: […]}` envelope rather than a bare array, and the problem `code` vocabulary —
-are fixed from day one.
+responses as an `{items: […]}` envelope rather than a bare array, and the meaning of each problem
+`type` and `code` — are fixed from day one. The *set* of types and codes is open: new ones are added
+within v1, and clients are told to expect them.
 
 The port is fixed (default 5712) and never hops on bind failure; a conflict is reported rather than
 silently worked around, because a client that finds the API on an unexpected port cannot know whose

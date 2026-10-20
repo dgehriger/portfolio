@@ -115,6 +115,7 @@ public class Messages extends NLS
     public static String ColumnActualValue;
     public static String ColumnActualValueBaseCurrency;
     public static String ColumnAmount;
+    public static String ColumnAttributeDefinedFor;
     public static String ColumnAverage;
     public static String ColumnAutoGenerate;
     public static String ColumnBalance;
@@ -1314,8 +1315,11 @@ public class Messages extends NLS
     public static String PrefMsgCalendar;
     public static String PrefMsgConfigureUpdates;
     public static String PrefMsgLanguageConfig;
+    public static String PrefMsgRestApiConnectorSettings;
     public static String PrefMsgRestApiEnterClientName;
     public static String PrefMsgRestApiInvalidPort;
+    public static String PrefMsgRestApiRejectedInvalidToken;
+    public static String PrefMsgRestApiRejectedNoToken;
     public static String PrefMsgRestApiTokenShownOnce;
     public static String PrefMsgRestApiUnsavedFiles;
     public static String PrefMyDividends24APIKey;
@@ -1333,8 +1337,12 @@ public class Messages extends NLS
     public static String PrefRestApiColumnCreated;
     public static String PrefRestApiColumnFile;
     public static String PrefRestApiColumnLastUsed;
+    public static String PrefRestApiLabelAuthorizationHeader;
     public static String PrefRestApiLabelClients;
+    public static String PrefRestApiLabelMcpUrl;
     public static String PrefRestApiLabelSession;
+    public static String PrefRestApiLabelToken;
+    public static String PrefRestApiLabelUnidentifiedClient;
     public static String PrefRestApiTitleNewToken;
     public static String PrefStoreSettingsNextToFile;
     public static String PrefTitle;
