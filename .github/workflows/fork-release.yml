@@ -81,9 +81,12 @@ jobs:
           cp "$RUNNER_TEMP/AccessControl/Plugins/i386-unicode/AccessControl.dll" "$NSIS_DIR/Plugins/x86-unicode/"
 
       - name: Build installer
-        working-directory: portfolio-product/installer
         run: |
-          VERSION=$(grep -m1 -oP '(?<=<version>)[^<]+' ../pom.xml)
+          VERSION=$(grep -m1 -oP '(?<=<version>)[^<]+' portfolio-product/pom.xml)
+          # makensis cannot read files beyond MAX_PATH (260), and the p2 cache in the
+          # product is nested deep enough to exceed it under the runner's checkout path
+          subst P: "$(cygpath -w "$PWD/portfolio-product")"
+          cd /p/installer
           "$NSIS_DIR/makensis.exe" -DSOFTWARE_VERSION="$VERSION" installer.nsi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
