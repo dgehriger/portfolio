@@ -70,7 +70,9 @@ jobs:
       - name: Install NSIS and its AccessControl plug-in
         run: |
           choco install nsis --no-progress -y
-          NSIS_DIR=$(ls -d "/c/Program Files (x86)/NSIS" "/c/Program Files/NSIS" 2>/dev/null | head -1)
+          for NSIS_DIR in "/c/Program Files (x86)/NSIS" "/c/Program Files/NSIS"; do
+            [ -x "$NSIS_DIR/makensis.exe" ] && break
+          done
           test -x "$NSIS_DIR/makensis.exe"
           echo "NSIS_DIR=$NSIS_DIR" >> "$GITHUB_ENV"
           curl -sSfL -o "$RUNNER_TEMP/AccessControl.zip" "$ACCESS_CONTROL_URL"
