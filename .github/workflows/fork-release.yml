@@ -1,0 +1,104 @@
+# Fork only (dgehriger/portfolio): builds the Windows installer and a portable zip from
+# feature/mcp-rw and publishes them as a GitHub release, so the fork's build (REST write
+# API for pp-mcp) can be installed on any PC without a local Maven build.
+#
+# Uses the "distro" product, which bundles a Java runtime, so nothing else is needed on the
+# PC. Both fork products start with -Dname.abuchen.portfolio.in-app-update=disable: the
+# online update would otherwise replace the fork with the upstream release.
+name: Fork release
+on:
+  push:
+    branches:
+      - feature/mcp-rw
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: true
+
+env:
+  # NSIS plug-in used by portfolio-product/installer/installer.nsi
+  ACCESS_CONTROL_URL: https://nsis.sourceforge.io/mediawiki/images/4/4a/AccessControl.zip
+  ACCESS_CONTROL_SHA256: 9aa60f9c5c023fda2808af216514d8913d2673bc522d944ee771da032a1bdc10
+
+jobs:
+  release:
+    name: Build installer and publish release
+    if: github.repository == 'dgehriger/portfolio'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Maven artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-mvn-${{ hashFiles('**/pom.xml', '**/*.target') }}
+          restore-keys: |
+            ${{ runner.os }}-mvn-
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: zulu
+
+      - name: Set up Maven
+        uses: stCarolas/setup-maven@v5
+        with:
+          maven-version: 3.9.16
+
+      - name: Build products
+        env:
+          MAVEN_OPTS: -Xmx4g
+        run: |
+          mvn verify \
+            --batch-mode \
+            -Ppackage-distro \
+            -DskipTests \
+            -Djacoco.skip=true \
+            -Dcheckstyle.skip=true \
+            --file portfolio-app/pom.xml
+
+      - name: Install NSIS AccessControl plug-in
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/AccessControl.zip" "$ACCESS_CONTROL_URL"
+          echo "$ACCESS_CONTROL_SHA256  $RUNNER_TEMP/AccessControl.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/AccessControl.zip" -d "$RUNNER_TEMP/AccessControl"
+          cp "$RUNNER_TEMP/AccessControl/Plugins/i386-unicode/AccessControl.dll" "/c/Program Files (x86)/NSIS/Plugins/x86-unicode/"
+
+      - name: Build installer
+        working-directory: portfolio-product/installer
+        run: |
+          VERSION=$(grep -m1 -oP '(?<=<version>)[^<]+' ../pom.xml)
+          "/c/Program Files (x86)/NSIS/makensis.exe" -DSOFTWARE_VERSION="$VERSION" installer.nsi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHORT=$(git rev-parse --short HEAD)
+          BASE="${VERSION%-SNAPSHOT}"
+          TAG="fork-v$BASE-${{ github.run_number }}"
+          cd portfolio-product/target/products
+          cp "PortfolioPerformance-$VERSION-setup.exe" "PortfolioPerformance-fork-$BASE-setup.exe"
+          cp PortfolioPerformance-distro-*-win32.win32.x86_64.zip "PortfolioPerformance-fork-$BASE-win32.x86_64.zip"
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "Portfolio Performance $BASE (fork, $SHORT)" \
+            --notes "Fork build of \`feature/mcp-rw\` at $SHORT: upstream $VERSION plus the REST write API used by \`tools/pp-mcp\`. Includes a Java runtime. The online update is disabled; install a newer fork release to upgrade (your settings and files are kept). The installer is unsigned, so Windows SmartScreen asks for confirmation." \
+            --latest \
+            "PortfolioPerformance-fork-$BASE-setup.exe" \
+            "PortfolioPerformance-fork-$BASE-win32.x86_64.zip"
+          # keep the five newest fork releases
+          gh release list --limit 100 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("fork-v"))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' \
+            | xargs -r -n1 gh release delete --yes --cleanup-tag
