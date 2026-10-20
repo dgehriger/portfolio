@@ -67,18 +67,22 @@ jobs:
             -Dcheckstyle.skip=true \
             --file portfolio-app/pom.xml
 
-      - name: Install NSIS AccessControl plug-in
+      - name: Install NSIS and its AccessControl plug-in
         run: |
+          choco install nsis --no-progress -y
+          NSIS_DIR=$(ls -d "/c/Program Files (x86)/NSIS" "/c/Program Files/NSIS" 2>/dev/null | head -1)
+          test -x "$NSIS_DIR/makensis.exe"
+          echo "NSIS_DIR=$NSIS_DIR" >> "$GITHUB_ENV"
           curl -sSfL -o "$RUNNER_TEMP/AccessControl.zip" "$ACCESS_CONTROL_URL"
           echo "$ACCESS_CONTROL_SHA256  $RUNNER_TEMP/AccessControl.zip" | sha256sum -c -
           unzip -q "$RUNNER_TEMP/AccessControl.zip" -d "$RUNNER_TEMP/AccessControl"
-          cp "$RUNNER_TEMP/AccessControl/Plugins/i386-unicode/AccessControl.dll" "/c/Program Files (x86)/NSIS/Plugins/x86-unicode/"
+          cp "$RUNNER_TEMP/AccessControl/Plugins/i386-unicode/AccessControl.dll" "$NSIS_DIR/Plugins/x86-unicode/"
 
       - name: Build installer
         working-directory: portfolio-product/installer
         run: |
           VERSION=$(grep -m1 -oP '(?<=<version>)[^<]+' ../pom.xml)
-          "/c/Program Files (x86)/NSIS/makensis.exe" -DSOFTWARE_VERSION="$VERSION" installer.nsi
+          "$NSIS_DIR/makensis.exe" -DSOFTWARE_VERSION="$VERSION" installer.nsi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Publish release
